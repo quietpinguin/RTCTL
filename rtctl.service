@@ -1,0 +1,12 @@
+# /usr/lib/systemd/system/rtcl.service
+# 
+[Unit]
+Description=Sets the real-time priority of kernel threads
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/systemd/scripts/rtctl start
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
