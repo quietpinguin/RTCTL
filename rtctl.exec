@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# /usr/lib/systemd/scripts/rtctl
+#
+
+#
+# Check if kernel is configured for PREEMPT
+#
+preemptive () {
+    if [[ "$(uname -v)" == *"PREEMPT"* ]]; then
+       return 0
+    else
+       return 1
+    fi
+}
+
+if ! preemptive; then
+    echo "Action not possible - kernel not configured for PREEMPT"
+    exit 0
+fi
+
+LOCKFILE=/var/run/rtctl.lock
+
+if [ -e $LOCKFILE ] ; then
+	exit 0
+fi
+
+touch $LOCKFILE
+
+RET=0
+case "$1" in
+    start|restart|reload)
+  	echo -n $"Setting kernel thread priorities: "
+	rtctl reset
+	success
+	echo
+	RET=$?
+	;;
+    stop)
+	success
+	echo
+    	RET=0;
+	;;
+    irq)
+	/usr/sbin/logger -t RTCTL "running due to IRQ add event"
+	rtctl reset
+	RET=$?
+	;;
+    status)
+    	rtctl show kthreads pid,cls,rtprio,cmd
+	RET=$?
+	;;
+    *)
+    	echo $"Usage: $0 {start|restart|reload|stop|irq|status}"
+	RET=1;
+	;;
+esac
+rm -f $LOCKFILE
+exit $RET
