@@ -1,0 +1,12 @@
+# /usr/lib/udev/rules.d/95-rtctl.rules
+# 
+
+# 
+# Change irq priority for alsa soundcards on plug-in
+#
+SUBSYSTEM=="sound", ATTRS{irq}=="[0-9]*", DRIVERS=="*", RUN+="systemctl start rtctl.service"
+ 
+# 
+# Change irq priority for firewire soundcards on plug-in
+# 
+SUBSYSTEM=="firewire", ATTRS{irq}=="[0-9]*", DRIVERS=="*", RUN+="systemctl start rtctl.service"
