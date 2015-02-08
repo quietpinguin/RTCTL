@@ -1,0 +1,201 @@
+#!/bin/bash
+#
+# /usr/sbin/rtctl
+#
+
+usage ()
+{
+    echo "Usage: $0 [--file <filename>] set <groupname> <prio> <fifo|batch|rr|other>"
+    echo "       $0 [--file <filename>] reset [<groupname>]"
+    echo "       $0 [--file <filename>] show <groupname> [<ps_fmt>]"
+    exit 1
+}
+
+#
+# Check for parameters
+#
+[ $# -lt 1 ] && usage
+
+RTGROUPFILE=""
+
+#
+# Check for custom rtgroups file
+#
+case "$1" in 
+    --file) 
+	RTGROUPFILE="$2";
+	shift; shift;
+	[ -f "${RTGROUPFILE}" ] || {
+	    echo "${RTGROUPFILE}: file not found"
+	    exit 1
+	}
+	;;
+esac
+
+#
+# or use default rtgroups file (if availble).
+#
+if [ -z "${RTGROUPFILE}" ]; then
+	RTGROUPFILE=/etc/default/rtgroups
+	if [ ! -f "${RTGROUPFILE}" ]; then
+		echo "No rtgroups file found in /etc/default"
+		exit 1
+	fi
+fi
+
+#
+# Execute command
+#
+CMD=$1
+shift
+
+GROUPNAME=""
+
+#
+# print the PIDs of processes belonging to ${GROUPNAME} as defined
+# in ${RTGROUPFILE}.
+#
+group_pids ()
+{
+  ps -eo pid,cmd | awk '
+    /^[a-zA-Z_0-9-]+:[*orbf]:[0-9]+:.+$/ {
+      split($0, parts, ":") 
+      if (parts[1] == groupname) {
+	  nr_rules += 1
+	  regexp_offset = length(parts[1]) + length(parts[2]) + length(parts[3]) + 4
+	  if (length(parts) > 4) {
+	    regexp_offset += length(parts[4]) + 1
+	  }
+	  group_regexps[nr_rules] = substr($0,regexp_offset)
+      }
+    }
+    /^ *[0-9]+ .+$/ {
+      for (i = 1; i <= nr_rules; ++i) {
+	if (match($2, group_regexps[i])) {
+          print $1
+	  break
+        }
+      }
+    }' groupname=${GROUPNAME} ${RTGROUPFILE} -
+}
+
+
+set_group_defaults ()
+{
+  ps -eo pid,cmd | awk '
+    /^[a-zA-Z_0-9-]+:[*orbf]:[0-9]+:.+$/ {
+      split($0, conf, ":")
+      if (groupname == "" || conf[1] == groupname) {
+        nr_rules += 1
+        group_sched[nr_rules] = conf[2]
+        group_prio[nr_rules] = conf[3]
+	regexp_offset = length(conf[1]) + length(conf[2]) + length(conf[3]) + 4
+	if (length(conf) < 5) {
+	  group_affinity[nr_rules] = "*"
+	} else {
+	  regexp_offset += length(conf[4]) + 1
+	  group_affinity[nr_rules] = conf[4]
+	}
+        group_regexps[nr_rules] = substr($0,regexp_offset)
+      }
+    }
+    /^ *[0-9]+ .+$/ {
+      for (i = nr_rules; i >= 1; --i) {
+	if (match($2, group_regexps[i])) {
+	  if (group_sched[i] != "*") {
+            print "chrt -p -" group_sched[i] " " group_prio[i] " " $1
+	  }
+	  if (group_affinity[i] != "*") {
+            print "taskset -p " group_affinity[i] " " $1 " > /dev/null"
+	  }
+          break
+        }
+      }
+    }' groupname=${GROUPNAME} ${RTGROUPFILE} - | sh
+}
+
+
+#
+# show "ps" output for group of threads
+#
+do_show ()
+{
+    ps_fmt=$1
+    ( group_pids; ps -eo $ps_fmt ) | awk '
+    /^[0-9]+$/ {
+      pids[$1] = 1
+    }
+    /^ *[0-9]+ .+$/ {
+      if ($1 in pids) {
+        print $0
+        delete pids[$1]
+      }
+    }' -
+}
+
+
+#
+# set priority and scheduler policy for group of threads
+#
+do_set ()
+{
+    group_pids | while read pid
+    do
+      chrt -p $2 $1 $pid
+    done
+}
+
+case "$CMD" in
+    "set")
+        [ $# -ne 3 ] && usage
+        GROUPNAME=$1
+	PRIO=$2
+	SCHED=$3
+	case "$3" in
+	    fifo)
+		SCHED="-f"
+		;;
+	    other)
+		SCHED="-o"
+		;;
+	    rr)
+		SCHED="-r"
+		;;
+	    batch)
+		SCHED="-b"
+		;;
+	    *)
+		usage
+		;;
+	esac
+	do_set $PRIO $SCHED
+	;;
+    "reset")
+        [ $# -gt 1 ] && usage
+        if [ $# -ne 0 ]; then
+            GROUPNAME=$1
+        fi
+        set_group_defaults
+	;;
+    "show")
+        [ $# -lt 1 ] && usage
+	GROUPNAME=$1
+	shift
+	case "$#" in
+	    1)
+		do_show $1
+		;;
+	    0)
+		do_show "pid,rtprio,policy,cmd"
+		;;
+	    *)
+		usage
+		;;
+	esac
+	;;
+    *)
+	usage
+	;;
+esac
+
+exit 0
