@@ -1,0 +1,58 @@
+# /etc/default/rtgroups
+#
+# Set RTPRIO for named groups.
+#
+# Format is: <groupname>:<sched>:<prio>:affinity:<regex>
+#
+# groupname must start at beginning of line.
+# 
+# sched must be one of: 'f' (fifo)
+#                       'b' (batch)
+#                       'r' (round-robin)
+#                       'o' (other) 
+#                       '*' (leave alone)
+# 
+# affinity is a hex number, see taskset(1) for details about number of CPUs,
+#                       '*' means "leave alone"
+#
+# regex is an awk regex
+#
+# The regex is matched against process names as printed by "ps -eo cmd".
+#
+# Any given process name may match more than one group. Default priority
+# and scheduling policy are taken from the last matching regexp. So the
+# more general groups should be placed before more specific groups.
+# 
+# General rules for Red Hat MGR
+# 
+# 1       kthreads
+# 2-69    available for use
+# 70-79   soft irqs
+# 80      NFS, RPC, locking
+# 81-89   hardirqs
+# 90-98   available for use
+# 99      watchdogs and migration
+# 
+# Guideline from http://www.rncbc.org
+# 
+# 90 - rtc - real-time clock
+# ?85 - firewire?
+# 80 - snd - ALSA PCI sound modules
+# 70 - usb - USB host controllers
+# 60 - i8042 - keyboard/ps2-mouse controllers
+# 
+# Note: jackd must come in at 70
+# 
+
+#kthreads:*:1:*:\[.*\]$
+#hardirq:f:89:*:\[*.(irq|IRQ).*\]
+#softirq:f:79:*:\[.*(softirq|sirq).*\]
+#softirq-sched:f:1:*:\[(softirq|sirq)-sched\/.*\]
+#rpciod:f:80:*:\[rpciod.*\]
+#lockd:f:80:*:\[lockd.*\]
+#nfsd:f:80:*:\[nfsiod.*\]
+#watchdog:f:99:*:\[watchdog.*\]
+#migration:f:99:*:\[migration\/.*\]
+
+firewire:f:80:*:\[irq/19-firewire\]
+timer:f:90:*:\[irq/8-rtc0\]
